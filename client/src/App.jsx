@@ -78,26 +78,32 @@ function App() {
     }
   };
 
-  const handleHotspotClick = (targetId) => {
-    setCurrentPanoramaId(targetId);
-  };
-
   useEffect(() => {
     if (window.pannellum && panoramaRef.current && currentPanorama) {
+      const scenes = panoramas.reduce((acc, p) => {
+        acc[p.id] = {
+          type: "equirectangular",
+          panorama: p.url,
+          pitch: p.pitch,
+          yaw: p.yaw,
+          hfov: p.hfov,
+          hotSpots: p.hotspots.map((hs) => ({
+            pitch: hs.pitch,
+            yaw: hs.yaw,
+            type: "scene",
+            text: hs.text,
+            sceneId: hs.targetId,
+          })),
+        };
+        return acc;
+      }, {});
+
       const viewer = window.pannellum.viewer(panoramaRef.current, {
-        type: "equirectangular",
-        panorama: currentPanorama.url,
-        autoLoad: true,
-        pitch: currentPanorama.pitch,
-        yaw: currentPanorama.yaw,
-        hfov: currentPanorama.hfov,
-        hotSpots: currentPanorama.hotspots.map((hs) => ({
-          pitch: hs.pitch,
-          yaw: hs.yaw,
-          type: "scene",
-          text: hs.text,
-          sceneId: hs.targetId,
-        })),
+        default: {
+          firstScene: currentPanoramaId,
+          sceneFadeDuration: 1000,
+        },
+        scenes: scenes,
       });
 
       viewer.on("mousedown", (event) => {
@@ -106,15 +112,11 @@ function App() {
         handleAddHotspot(coords[0], coords[1]);
       });
 
-      viewer.on("loadscene", (sceneId) => {
-        setCurrentPanoramaId(sceneId);
-      });
-
       return () => {
         viewer.destroy();
       };
     }
-  }, [currentPanorama]);
+  }, [panoramas, currentPanoramaId, addingHotspot]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
@@ -132,7 +134,7 @@ function App() {
             id="panorama-upload"
             accept="image/jpeg,image/png"
             onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 filesaw file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
         </div>
         <div className="mb-4">
