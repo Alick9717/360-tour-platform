@@ -2,23 +2,39 @@ import { useEffect, useRef, useState } from "react";
 
 function App() {
   const panoramaRef = useRef(null);
-  const [panoramaUrl, setPanoramaUrl] = useState(
-    "https://pannellum.org/images/alma.jpg"
-  );
-  const [pitch, setPitch] = useState(10);
-  const [yaw, setYaw] = useState(180);
-  const [hfov, setHfov] = useState(110);
+  const [panoramas, setPanoramas] = useState([
+    {
+      id: "default",
+      url: "https://pannellum.org/images/alma.jpg",
+      pitch: 10,
+      yaw: 180,
+      hfov: 110,
+      hotspots: [],
+    },
+  ]);
+  const [currentPanoramaId, setCurrentPanoramaId] = useState("default");
+  const [addingHotspot, setAddingHotspot] = useState(false);
+
+  const currentPanorama = panoramas.find((p) => p.id === currentPanoramaId);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file && (file.type === "image/jpeg" || file.type === "image/png")) {
       const reader = new FileReader();
       reader.onload = () => {
-        setPanoramaUrl(reader.result);
-        // Reset alignment settings for new panorama
-        setPitch(0);
-        setYaw(0);
-        setHfov(100);
+        const newId = `pano-${Date.now()}`;
+        setPanoramas([
+          ...panoramas,
+          {
+            id: newId,
+            url: reader.result,
+            pitch: 0,
+            yaw: 0,
+            hfov: 100,
+            hotspots: [],
+          },
+        ]);
+        setCurrentPanoramaId(newId);
       };
       reader.readAsDataURL(file);
     } else {
@@ -26,23 +42,79 @@ function App() {
     }
   };
 
+  const handleAlignmentChange = (field, value) => {
+    setPanoramas(
+      panoramas.map((p) =>
+        p.id === currentPanoramaId ? { ...p, [field]: Number(value) } : p
+      )
+    );
+  };
+
+  const handleAddHotspot = (pitch, yaw) => {
+    setAddingHotspot({ pitch, yaw });
+  };
+
+  const handleHotspotSelect = (targetId) => {
+    if (addingHotspot) {
+      setPanoramas(
+        panoramas.map((p) =>
+          p.id === currentPanoramaId
+            ? {
+                ...p,
+                hotspots: [
+                  ...p.hotspots,
+                  {
+                    pitch: addingHotspot.pitch,
+                    yaw: addingHotspot.yaw,
+                    targetId,
+                    text: `To ${panoramas.find((p) => p.id === targetId).id}`,
+                  },
+                ],
+              }
+            : p
+        )
+      );
+      setAddingHotspot(false);
+    }
+  };
+
+  const handleHotspotClick = (targetId) => {
+    setCurrentPanoramaId(targetId);
+  };
+
   useEffect(() => {
-    if (window.pannellum && panoramaRef.current) {
+    if (window.pannellum && panoramaRef.current && currentPanorama) {
       const viewer = window.pannellum.viewer(panoramaRef.current, {
         type: "equirectangular",
-        panorama: panoramaUrl,
+        panorama: currentPanorama.url,
         autoLoad: true,
-        pitch: pitch,
-        yaw: yaw,
-        hfov: hfov,
+        pitch: currentPanorama.pitch,
+        yaw: currentPanorama.yaw,
+        hfov: currentPanorama.hfov,
+        hotSpots: currentPanorama.hotspots.map((hs) => ({
+          pitch: hs.pitch,
+          yaw: hs.yaw,
+          type: "scene",
+          text: hs.text,
+          sceneId: hs.targetId,
+        })),
       });
 
-      // Cleanup to destroy viewer on component unmount or panorama change
+      viewer.on("mousedown", (event) => {
+        if (addingHotspot) return;
+        const coords = viewer.mouseEventToCoords(event);
+        handleAddHotspot(coords[0], coords[1]);
+      });
+
+      viewer.on("loadscene", (sceneId) => {
+        setCurrentPanoramaId(sceneId);
+      });
+
       return () => {
         viewer.destroy();
       };
     }
-  }, [panoramaUrl, pitch, yaw, hfov]);
+  }, [currentPanorama]);
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
@@ -60,50 +132,94 @@ function App() {
             id="panorama-upload"
             accept="image/jpeg,image/png"
             onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 filesaw file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
+        </div>
+        <div className="mb-4">
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Panoramas</h3>
+          <div className="flex flex-wrap gap-2">
+            {panoramas.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setCurrentPanoramaId(p.id)}
+                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                  p.id === currentPanoramaId
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                {p.id}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Pitch: {pitch}°
+              Pitch: {currentPanorama?.pitch}°
             </label>
             <input
               type="range"
               min="-90"
               max="90"
-              value={pitch}
-              onChange={(e) => setPitch(Number(e.target.value))}
+              value={currentPanorama?.pitch || 0}
+              onChange={(e) => handleAlignmentChange("pitch", e.target.value)}
               className="w-full"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Yaw: {yaw}°
+              Yaw: {currentPanorama?.yaw}°
             </label>
             <input
               type="range"
               min="-180"
               max="180"
-              value={yaw}
-              onChange={(e) => setYaw(Number(e.target.value))}
+              value={currentPanorama?.yaw || 0}
+              onChange={(e) => handleAlignmentChange("yaw", e.target.value)}
               className="w-full"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Field of View: {hfov}°
+              Field of View: {currentPanorama?.hfov}°
             </label>
             <input
               type="range"
               min="50"
               max="120"
-              value={hfov}
-              onChange={(e) => setHfov(Number(e.target.value))}
+              value={currentPanorama?.hfov || 100}
+              onChange={(e) => handleAlignmentChange("hfov", e.target.value)}
               className="w-full"
             />
           </div>
         </div>
+        {addingHotspot && (
+          <div className="mb-4 p-4 bg-blue-50 rounded-md">
+            <h3 className="text-lg font-medium text-gray-700 mb-2">
+              Select Target Panorama for Hotspot
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {panoramas
+                .filter((p) => p.id !== currentPanoramaId)
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleHotspotSelect(p.id)}
+                    className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-600"
+                  >
+                    {p.id}
+                  </button>
+                ))}
+              <button
+                onClick={() => setAddingHotspot(false)}
+                className="px-3 py-1 bg-gray-500 text-white rounded-md text-sm font-medium hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div
           ref={panoramaRef}
           className="w-full"
@@ -111,7 +227,7 @@ function App() {
         ></div>
       </div>
       <p className="mt-4 text-gray-600">
-        {panoramaUrl ? "Panorama loaded. Adjust alignment using sliders." : "No panorama loaded."}
+        {currentPanorama ? "Panorama loaded. Add hotspots to create a tour." : "No panorama loaded."}
       </p>
     </div>
   );
