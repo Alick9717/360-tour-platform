@@ -6,6 +6,7 @@ function App() {
     {
       id: "default",
       url: "https://pannellum.org/images/alma.jpg",
+      thumbnail: "https://pannellum.org/images/alma.jpg",
       pitch: 10,
       yaw: 180,
       hfov: 110,
@@ -14,6 +15,7 @@ function App() {
   ]);
   const [currentPanoramaId, setCurrentPanoramaId] = useState("default");
   const [addingHotspot, setAddingHotspot] = useState(false);
+  const [hotspotCoords, setHotspotCoords] = useState(null);
 
   const currentPanorama = panoramas.find((p) => p.id === currentPanoramaId);
 
@@ -28,6 +30,7 @@ function App() {
           {
             id: newId,
             url: reader.result,
+            thumbnail: reader.result,
             pitch: 0,
             yaw: 0,
             hfov: 100,
@@ -50,12 +53,26 @@ function App() {
     );
   };
 
-  const handleAddHotspot = (pitch, yaw) => {
-    setAddingHotspot({ pitch, yaw });
+  const handleResetAlignment = () => {
+    setPanoramas(
+      panoramas.map((p) =>
+        p.id === currentPanoramaId ? { ...p, pitch: 0, yaw: 0, hfov: 100 } : p
+      )
+    );
+  };
+
+  const startAddingHotspot = () => {
+    setAddingHotspot(true);
+  };
+
+  const handlePanoramaClick = (pitch, yaw) => {
+    if (addingHotspot) {
+      setHotspotCoords({ pitch, yaw });
+    }
   };
 
   const handleHotspotSelect = (targetId) => {
-    if (addingHotspot) {
+    if (hotspotCoords) {
       setPanoramas(
         panoramas.map((p) =>
           p.id === currentPanoramaId
@@ -64,8 +81,8 @@ function App() {
                 hotspots: [
                   ...p.hotspots,
                   {
-                    pitch: addingHotspot.pitch,
-                    yaw: addingHotspot.yaw,
+                    pitch: hotspotCoords.pitch,
+                    yaw: hotspotCoords.yaw,
                     targetId,
                     text: `To ${panoramas.find((p) => p.id === targetId).id}`,
                   },
@@ -75,6 +92,7 @@ function App() {
         )
       );
       setAddingHotspot(false);
+      setHotspotCoords(null);
     }
   };
 
@@ -87,6 +105,9 @@ function App() {
           pitch: p.pitch,
           yaw: p.yaw,
           hfov: p.hfov,
+          autoRotate: 0,
+          mouseZoom: true,
+          draggable: true,
           hotSpots: p.hotspots.map((hs) => ({
             pitch: hs.pitch,
             yaw: hs.yaw,
@@ -102,14 +123,16 @@ function App() {
         default: {
           firstScene: currentPanoramaId,
           sceneFadeDuration: 1000,
+          autoLoad: true,
         },
         scenes: scenes,
       });
 
       viewer.on("mousedown", (event) => {
-        if (addingHotspot) return;
-        const coords = viewer.mouseEventToCoords(event);
-        handleAddHotspot(coords[0], coords[1]);
+        if (addingHotspot) {
+          const coords = viewer.mouseEventToCoords(event);
+          handlePanoramaClick(coords[0], coords[1]);
+        }
       });
 
       return () => {
@@ -119,118 +142,131 @@ function App() {
   }, [panoramas, currentPanoramaId, addingHotspot]);
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      <h1 className="text-3xl font-bold mb-6">360 Tour Platform</h1>
-      <div className="w-full max-w-4xl bg-white p-6 rounded-lg shadow-md">
-        <div className="mb-4">
-          <label
-            htmlFor="panorama-upload"
-            className="block text-sm font-medium text-gray-700 mb-2"
-          >
-            Upload 360 Panorama
+    <div className="app-container">
+      {/* Sidebar */}
+      <div className="sidebar">
+        <h2>Tour Editor</h2>
+
+        {/* Upload Section */}
+        <div className="upload-section">
+          <label>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+            </svg>
+            Upload Panorama
           </label>
           <input
             type="file"
             id="panorama-upload"
             accept="image/jpeg,image/png"
             onChange={handleFileUpload}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
         </div>
-        <div className="mb-4">
-          <h3 className="text-lg font-medium text-gray-700 mb-2">Panoramas</h3>
-          <div className="flex flex-wrap gap-2">
-            {panoramas.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setCurrentPanoramaId(p.id)}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
-                  p.id === currentPanoramaId
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                {p.id}
-              </button>
-            ))}
-          </div>
+
+        {/* Panoramas List */}
+        <div className="panoramas-list">
+          <h3>Panoramas</h3>
+          {panoramas.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => setCurrentPanoramaId(p.id)}
+              className={`panorama-item ${p.id === currentPanoramaId ? "active" : ""}`}
+            >
+              <img src={p.thumbnail} alt={p.id} />
+              <span>{p.id}</span>
+            </div>
+          ))}
         </div>
-        <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+        {/* Alignment Controls */}
+        <div className="alignment-controls">
+          <h3>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+            </svg>
+            Alignment
+          </h3>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Pitch: {currentPanorama?.pitch}°
-            </label>
+            <label>Pitch: {currentPanorama?.pitch}°</label>
             <input
               type="range"
               min="-90"
               max="90"
               value={currentPanorama?.pitch || 0}
               onChange={(e) => handleAlignmentChange("pitch", e.target.value)}
-              className="w-full"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Yaw: {currentPanorama?.yaw}°
-            </label>
+            <label>Yaw: {currentPanorama?.yaw}°</label>
             <input
               type="range"
               min="-180"
               max="180"
               value={currentPanorama?.yaw || 0}
               onChange={(e) => handleAlignmentChange("yaw", e.target.value)}
-              className="w-full"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Field of View: {currentPanorama?.hfov}°
-            </label>
+            <label>Field of View: {currentPanorama?.hfov}°</label>
             <input
               type="range"
               min="50"
               max="120"
               value={currentPanorama?.hfov || 100}
               onChange={(e) => handleAlignmentChange("hfov", e.target.value)}
-              className="w-full"
             />
           </div>
+          <button onClick={handleResetAlignment}>Reset Alignment</button>
         </div>
-        {addingHotspot && (
-          <div className="mb-4 p-4 bg-blue-50 rounded-md">
-            <h3 className="text-lg font-medium text-gray-700 mb-2">
-              Select Target Panorama for Hotspot
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {panoramas
-                .filter((p) => p.id !== currentPanoramaId)
-                .map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleHotspotSelect(p.id)}
-                    className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-600"
-                  >
-                    {p.id}
-                  </button>
-                ))}
-              <button
-                onClick={() => setAddingHotspot(false)}
-                className="px-3 py-1 bg-gray-500 text-white rounded-md text-sm font-medium hover:bg-gray-600"
-              >
-                Cancel
-              </button>
+
+        {/* Hotspot Controls */}
+        <div className="hotspot-controls">
+          <button disabled={panoramas.length < 2} onClick={startAddingHotspot}>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Add Hotspot
+          </button>
+          {addingHotspot && (
+            <div className="hotspot-panel">
+              <p>Click on the panorama to place the hotspot.</p>
+              {hotspotCoords && (
+                <>
+                  <h4>Select Target Panorama</h4>
+                  <div className="buttons">
+                    {panoramas
+                      .filter((p) => p.id !== currentPanoramaId)
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleHotspotSelect(p.id)}
+                        >
+                          {p.id}
+                        </button>
+                      ))}
+                    <button
+                      className="cancel"
+                      onClick={() => {
+                        setAddingHotspot(false);
+                        setHotspotCoords(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        )}
-        <div
-          ref={panoramaRef}
-          className="w-full"
-          style={{ height: "500px" }}
-        ></div>
+          )}
+        </div>
       </div>
-      <p className="mt-4 text-gray-600">
-        {currentPanorama ? "Panorama loaded. Add hotspots to create a tour." : "No panorama loaded."}
-      </p>
+
+      {/* Main Viewer */}
+      <div className="viewer-container">
+        <div className="viewer">
+          <div ref={panoramaRef}></div>
+        </div>
+      </div>
     </div>
   );
 }
